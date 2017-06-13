@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 ds = distributions
@@ -150,6 +151,14 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(sample_values.mean(axis=0), mu, atol=1e-2)
       self.assertAllClose(np.cov(sample_values, rowvar=0), sigma, atol=0.06)
 
+  def testSingularScaleRaises(self):
+    with self.test_session():
+      mu = None
+      chol = [[1., 0.], [0., 0.]]
+      mvn = ds.MultivariateNormalTriL(mu, chol, validate_args=True)
+      with self.assertRaisesOpError("Singular operator"):
+        mvn.sample().eval()
+
   def testSampleWithSampleShape(self):
     with self.test_session():
       mu = self._rng.rand(3, 5, 2)
@@ -240,7 +249,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -262,7 +271,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -284,7 +293,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           validate_args=True)
 
       # Should be zero since KL(p || p) = =.
-      kl = ds.kl(mvn_a, mvn_a)
+      kl = ds.kl_divergence(mvn_a, mvn_a)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -299,8 +308,6 @@ class MultivariateNormalTriLTest(test.TestCase):
     true_covariance = np.matmul(true_scale, true_scale.T)
     true_variance = np.diag(true_covariance)
     true_stddev = np.sqrt(true_variance)
-    true_det_covariance = np.linalg.det(true_covariance)
-    true_log_det_covariance = np.log(true_det_covariance)
 
     with self.test_session() as sess:
       dist = ds.MultivariateNormalTriL(
@@ -322,7 +329,7 @@ class MultivariateNormalTriLTest(test.TestCase):
 
       sample_kl_chol = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_chol.log_prob(samps), 0)
-      analytical_kl_chol = ds.kl(dist, mvn_chol)
+      analytical_kl_chol = ds.kl_divergence(dist, mvn_chol)
 
       scale = dist.scale.to_dense()
 
@@ -333,8 +340,6 @@ class MultivariateNormalTriLTest(test.TestCase):
           analytical_covariance_,
           analytical_variance_,
           analytical_stddev_,
-          analytical_log_det_covariance_,
-          analytical_det_covariance_,
           sample_kl_chol_, analytical_kl_chol_,
           scale_,
       ] = sess.run([
@@ -344,46 +349,34 @@ class MultivariateNormalTriLTest(test.TestCase):
           dist.covariance(),
           dist.variance(),
           dist.stddev(),
-          dist.log_det_covariance(),
-          dist.det_covariance(),
           sample_kl_chol, analytical_kl_chol,
           scale,
       ])
 
       sample_variance_ = np.diag(sample_covariance_)
       sample_stddev_ = np.sqrt(sample_variance_)
-      sample_det_covariance_ = np.linalg.det(sample_covariance_)
-      sample_log_det_covariance_ = np.log(sample_det_covariance_)
 
-      print("true_mean:\n{}  ".format(true_mean))
-      print("sample_mean:\n{}".format(sample_mean_))
-      print("analytical_mean:\n{}".format(analytical_mean_))
+      logging.vlog(2, "true_mean:\n{}  ".format(true_mean))
+      logging.vlog(2, "sample_mean:\n{}".format(sample_mean_))
+      logging.vlog(2, "analytical_mean:\n{}".format(analytical_mean_))
 
-      print("true_covariance:\n{}".format(true_covariance))
-      print("sample_covariance:\n{}".format(sample_covariance_))
-      print("analytical_covariance:\n{}".format(analytical_covariance_))
+      logging.vlog(2, "true_covariance:\n{}".format(true_covariance))
+      logging.vlog(2, "sample_covariance:\n{}".format(sample_covariance_))
+      logging.vlog(
+          2, "analytical_covariance:\n{}".format(analytical_covariance_))
 
-      print("true_variance:\n{}".format(true_variance))
-      print("sample_variance:\n{}".format(sample_variance_))
-      print("analytical_variance:\n{}".format(analytical_variance_))
+      logging.vlog(2, "true_variance:\n{}".format(true_variance))
+      logging.vlog(2, "sample_variance:\n{}".format(sample_variance_))
+      logging.vlog(2, "analytical_variance:\n{}".format(analytical_variance_))
 
-      print("true_stddev:\n{}".format(true_stddev))
-      print("sample_stddev:\n{}".format(sample_stddev_))
-      print("analytical_stddev:\n{}".format(analytical_stddev_))
+      logging.vlog(2, "true_stddev:\n{}".format(true_stddev))
+      logging.vlog(2, "sample_stddev:\n{}".format(sample_stddev_))
+      logging.vlog(2, "analytical_stddev:\n{}".format(analytical_stddev_))
 
-      print("true_log_det_covariance:\n{}".format(true_log_det_covariance))
-      print("sample_log_det_covariance:\n{}".format(sample_log_det_covariance_))
-      print("analytical_log_det_covariance:\n{}".format(
-          analytical_log_det_covariance_))
+      logging.vlog(2, "true_scale:\n{}".format(true_scale))
+      logging.vlog(2, "scale:\n{}".format(scale_))
 
-      print("true_det_covariance:\n{}".format(true_det_covariance))
-      print("sample_det_covariance:\n{}".format(sample_det_covariance_))
-      print("analytical_det_covariance:\n{}".format(analytical_det_covariance_))
-
-      print("true_scale:\n{}".format(true_scale))
-      print("scale:\n{}".format(scale_))
-
-      print("kl_chol:      analytical:{}  sample:{}".format(
+      logging.vlog(2, "kl_chol:      analytical:{}  sample:{}".format(
           analytical_kl_chol_, sample_kl_chol_))
 
       self.assertAllClose(true_mean, sample_mean_,
@@ -404,17 +397,6 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(true_stddev, sample_stddev_,
                           atol=0., rtol=0.01)
       self.assertAllClose(true_stddev, analytical_stddev_,
-                          atol=0., rtol=1e-6)
-
-      self.assertAllClose(true_log_det_covariance, sample_log_det_covariance_,
-                          atol=0., rtol=0.04)
-      self.assertAllClose(true_log_det_covariance,
-                          analytical_log_det_covariance_,
-                          atol=0., rtol=1e-6)
-
-      self.assertAllClose(true_det_covariance, sample_det_covariance_,
-                          atol=0., rtol=0.03)
-      self.assertAllClose(true_det_covariance, analytical_det_covariance_,
                           atol=0., rtol=1e-6)
 
       self.assertAllClose(true_scale, scale_,

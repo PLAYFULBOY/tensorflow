@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -60,7 +60,7 @@ class RetvalOp : public XlaOpKernel {
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
         OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
-        tc.AddRetval(index_, input);
+        tc.AddRetval(index_, dtype_, input);
       }
     }
   }
@@ -73,7 +73,7 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP("_Retval", RetvalOp);
+REGISTER_XLA_OP(Name("_Retval"), RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

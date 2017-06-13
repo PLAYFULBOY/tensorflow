@@ -18,17 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = [
     "Poisson",
@@ -81,19 +80,18 @@ class Poisson(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[rate]) as ns:
+    with ops.name_scope(name, values=[rate]):
       with ops.control_dependencies([check_ops.assert_positive(rate)] if
                                     validate_args else []):
         self._rate = array_ops.identity(rate, name="rate")
     super(Poisson, self).__init__(
         dtype=self._rate.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._rate],
-        name=ns)
+        name=name)
 
   @property
   def rate(self):
@@ -126,14 +124,20 @@ class Poisson(distribution.Distribution):
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
   def _cdf(self, x):
-    x = self._assert_valid_sample(x, check_integer=False)
+    if self.validate_args:
+      # We set `check_integer=False` since the CDF is defined on whole real
+      # line.
+      x = distribution_util.embed_check_nonnegative_discrete(
+          x, check_integer=False)
     return math_ops.igammac(math_ops.floor(x + 1), self.rate)
 
   def _log_normalization(self):
     return self.rate
 
   def _log_unnormalized_prob(self, x):
-    x = self._assert_valid_sample(x, check_integer=True)
+    if self.validate_args:
+      x = distribution_util.embed_check_nonnegative_discrete(
+          x, check_integer=True)
     return x * math_ops.log(self.rate) - math_ops.lgamma(x + 1)
 
   def _mean(self):
@@ -151,12 +155,3 @@ class Poisson(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     return random_ops.random_poisson(
         self.rate, [n], dtype=self.dtype, seed=seed)
-
-  def _assert_valid_sample(self, x, check_integer=True):
-    if not self.validate_args:
-      return x
-    dependencies = [check_ops.assert_non_negative(x)]
-    if check_integer:
-      dependencies += [distribution_util.assert_integer_form(
-          x, message="x has non-integer components.")]
-    return control_flow_ops.with_dependencies(dependencies, x)
